@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>บันทึกรายรับรายจ่าย</title>
+<style>
+  /* ---------- ธีมและฟอนต์ ---------- */
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --line: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --income: #22c55e;
+    --expense: #ef4444;
+    --accent: #6366f1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Sarabun", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+
+  /* ---------- การ์ด ---------- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  /* ---------- ฟอร์ม ---------- */
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 140px; margin-bottom: 14px; }
+  label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: 6px; }
+  input, select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0f172a;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    color: var(--text);
+    font-size: .95rem;
+    font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  button {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { opacity: .9; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ---------- แถบแจ้งสถานะ ---------- */
+  #status {
+    display: none;
+    padding: 10px 14px;
+    border-radius: 9px;
+    margin-top: 12px;
+    font-size: .9rem;
+  }
+  #status.ok  { display: block; background: rgba(34,197,94,.15);  color: var(--income);  }
+  #status.err { display: block; background: rgba(239,68,68,.15);  color: var(--expense); }
+
+  /* ---------- สรุปยอด ---------- */
+  .summary { display: flex; gap: 12px; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 130px; text-align: center; padding: 14px; border-radius: 11px; background: #0f172a; border: 1px solid var(--line); }
+  .stat .lbl { font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+  .stat .val { font-size: 1.25rem; font-weight: 700; }
+  .val.income { color: var(--income); }
+  .val.expense { color: var(--expense); }
+
+  /* ---------- ตาราง ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+  td.amt { text-align: right; font-variant-numeric: tabular-nums; }
+  .tag { padding: 2px 8px; border-radius: 6px; font-size: .78rem; }
+  .tag.income { background: rgba(34,197,94,.15); color: var(--income); }
+  .tag.expense { background: rgba(239,68,68,.15); color: var(--expense); }
+  .empty { text-align: center; color: var(--muted); padding: 20px; }
+
+  /* ---------- หน้าล็อกรหัสผ่าน ---------- */
+  #lock {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #lock .box {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 32px 28px; width: 100%; max-width: 340px;
+    text-align: center;
+  }
+  #lock h2 { margin: 0 0 4px; font-size: 1.2rem; }
+  #lock p { color: var(--muted); font-size: .85rem; margin: 0 0 20px; }
+  #lock input { text-align: center; margin-bottom: 12px; }
+  .hidden { display: none !important; }
+
+  /* ---------- อ่านสลิป (OCR) ---------- */
+  #slipInput { padding: 8px; }
+  #slipStatus {
+    display: none; font-size: .85rem; margin-top: 8px;
+    padding: 8px 10px; border-radius: 8px;
+    background: rgba(99,102,241,.15); color: var(--accent);
+  }
+  #slipStatus.ok-note  { background: rgba(34,197,94,.15); color: var(--income); }
+  #slipStatus.err-note { background: rgba(239,68,68,.15); color: var(--expense); }
+  #slipPreview {
+    display: block; max-width: 100%; max-height: 240px;
+    margin-top: 10px; border-radius: 10px; border: 1px solid var(--line);
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+
+<!-- ===== หน้าล็อกรหัสผ่าน ===== -->
+<div id="lock">
+  <div class="box">
+    <h2>🔒 กรุณาใส่รหัสผ่าน</h2>
+    <p>เข้าถึงบันทึกรายรับรายจ่าย</p>
+    <form id="lockForm">
+      <input type="password" id="pw" placeholder="รหัสผ่าน" autocomplete="current-password">
+      <button type="submit">เข้าสู่ระบบ</button>
+      <div id="lockStatus" style="color:var(--expense);font-size:.85rem;margin-top:10px;display:none;">รหัสผ่านไม่ถูกต้อง</div>
+    </form>
+  </div>
+</div>
+
+<div class="wrap hidden">
+  <h1>💰 บันทึกรายรับรายจ่าย</h1>
+  <p class="sub">ข้อมูลถูกบันทึกลง Google Sheet ของคุณโดยตรง</p>
+
+  <!-- ===== ฟอร์มเพิ่มรายการ ===== -->
+  <div class="card">
+    <form id="form" novalidate>
+      <div class="field">
+        <label for="slipInput">📷 อ่านจากสลิป (อัปโหลดรูป แล้วระบบกรอกยอด/วันที่ให้)</label>
+        <input type="file" id="slipInput" accept="image/*">
+        <img id="slipPreview" class="hidden" alt="ตัวอย่างสลิป">
+        <div id="slipStatus"></div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="date">วันที่</label>
+          <input type="date" id="date" required>
+        </div>
+        <div class="field">
+          <label for="type">ประเภท</label>
+          <select id="type" required>
+            <option value="รายจ่าย">รายจ่าย</option>
+            <option value="รายรับ">รายรับ</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="category">หมวดหมู่</label>
+          <select id="category" required></select>
+        </div>
+        <div class="field">
+          <label for="amount">จำนวนเงิน (บาท)</label>
+          <input type="number" id="amount" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="note">หมายเหตุ (ไม่บังคับ)</label>
+        <input type="text" id="note" placeholder="รายละเอียดเพิ่มเติม">
+      </div>
+      <button type="submit" id="saveBtn">เพิ่มรายการ</button>
+      <div id="status"></div>
+    </form>
+  </div>
+
+  <!-- ===== สรุปยอด ===== -->
+  <div class="card">
+    <div class="summary">
+      <div class="stat"><div class="lbl">รายรับ</div><div class="val income" id="totalIncome">-</div></div>
+      <div class="stat"><div class="lbl">รายจ่าย</div><div class="val expense" id="totalExpense">-</div></div>
+      <div class="stat"><div class="lbl">คงเหลือ</div><div class="val" id="balance">-</div></div>
+    </div>
+  </div>
+
+  <!-- ===== ตารางรายการ ===== -->
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>วันที่</th><th>ประเภท</th><th>หมวดหมู่</th><th class="amt">จำนวนเงิน</th><th>หมายเหตุ</th></tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="5" class="empty">กำลังโหลด...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // ====== ตั้งค่ารหัสผ่านตรงนี้ (เปลี่ยนเป็นรหัสของคุณ) ======
+  const PASSWORD = "1234";
+
+  // ====== ใส่ URL ของ Google Apps Script Web App ตรงนี้ ======
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzsumsoTZUTISSsCpLBRAmr3ptVsqXLdjiyeA5K5b07QDFQz_XuYhlt1mh88oBW4Ef5Qw/exec";
+
+  // ====== รหัสลับ ต้องตั้งให้ "ตรงกับ" ฝั่ง Apps Script (เปลี่ยนเป็นข้อความยาก ๆ ของคุณ) ======
+  const SECRET = "john-cashflow-x9k2mq7p";
+
+  const $ = (id) => document.getElementById(id);
+
+  // ====== ตรวจรหัสผ่านก่อนเข้าใช้งาน ======
+  $("lockForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if ($("pw").value === PASSWORD) {
+      $("lock").classList.add("hidden");                 // ซ่อนหน้าล็อก
+      document.querySelector(".wrap").classList.remove("hidden"); // แสดงแอป
+      loadData();                                        // โหลดข้อมูลหลังปลดล็อก
+    } else {
+      $("lockStatus").style.display = "block";
+      $("pw").value = "";
+    }
+  });
+
+  // ตั้งวันที่เริ่มต้นเป็นวันนี้
+  $("date").valueAsDate = new Date();
+
+  // ====== หมวดหมู่ (เปลี่ยนตามประเภทรายรับ/รายจ่าย) ======
+  const EXPENSE_CATS = ["อาหาร & เครื่องดื่ม","ของใช้ในบ้าน","เดินทาง","ค่าเช่า/ที่พัก","บิล & สาธารณูปโภค","ช้อปปิ้ง & เสื้อผ้า","สุขภาพ & ยา","บันเทิง & ท่องเที่ยว","การศึกษา","ผ่อน & หนี้สิน","ประกัน","ทำบุญ & บริจาค","อื่น ๆ"];
+  const INCOME_CATS  = ["เงินเดือน","โบนัส & ค่าล่วงเวลา","รายได้เสริม/ฟรีแลนซ์","ดอกเบี้ย & เงินปันผล","ขายของ","ได้รับโอน/ของขวัญ","เงินคืน","อื่น ๆ"];
+  function populateCategories() {
+    const cats = $("type").value === "รายรับ" ? INCOME_CATS : EXPENSE_CATS;
+    $("category").innerHTML = cats.map(c => '<option value="' + c + '">' + c + '</option>').join("");
+  }
+  $("type").addEventListener("change", populateCategories);
+  populateCategories();  // เติมหมวดหมู่เริ่มต้น
+
+  // แสดงข้อความแจ้งสถานะ
+  function showStatus(msg, ok) {
+    const el = $("status");
+    el.textContent = msg;
+    el.className = ok ? "ok" : "err";
+    if (ok) setTimeout(() => { el.className = ""; el.style.display = "none"; }, 3000);
+  }
+
+  // ====== บันทึกรายการใหม่ ======
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const date = $("date").value;
+    const category = $("category").value.trim();
+    const amount = parseFloat($("amount").value);
+
+    // ตรวจสอบข้อมูลก่อนส่ง (แสดงข้อความภาษาไทยเอง)
+    if (!date) { showStatus("กรุณาเลือกวันที่", false); return; }
+    if (!category) { showStatus("กรุณากรอกหมวดหมู่", false); return; }
+    if (isNaN(amount) || amount <= 0) {
+      showStatus("กรุณากรอกจำนวนเงินเป็นตัวเลขที่มากกว่า 0", false);
+      return;
+    }
+
+    const payload = {
+      date: date,
+      type: $("type").value,
+      category: category,
+      amount: amount,
+      note: $("note").value.trim()
+    };
+
+    const btn = $("saveBtn");
+    btn.disabled = true;
+    btn.textContent = "กำลังบันทึก...";
+
+    payload.secret = SECRET;  // แนบรหัสลับไปกับข้อมูล
+
+    // หมายเหตุ: ไม่ตั้ง header Content-Type เพื่อเลี่ยง CORS preflight ของ Apps Script
+    fetch(WEB_APP_URL, { method: "POST", body: JSON.stringify(payload) })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          showStatus("✓ บันทึกรายการเรียบร้อยแล้ว", true);
+          $("form").reset();
+          $("date").valueAsDate = new Date();
+          loadData();
+        } else {
+          showStatus("เกิดข้อผิดพลาด: " + data.message, false);
+        }
+      })
+      .catch((err) => showStatus("เชื่อมต่อไม่สำเร็จ: " + err.message, false))
+      .finally(() => { btn.disabled = false; btn.textContent = "เพิ่มรายการ"; });
+  });
+
+  // ====== อ่านสลิปด้วย OCR (Tesseract.js) ======
+
+  // ดึงยอดเงิน: หาเลขที่มีทศนิยม 2 ตำแหน่ง แล้วเลือกค่าที่มากที่สุด (มักเป็นยอดโอน)
+  function parseSlipAmount(text) {
+    const matches = text.match(/\d[\d,]*\.\d{2}/g) || [];
+    const nums = matches.map(s => parseFloat(s.replace(/,/g, ""))).filter(n => n > 0);
+    return nums.length ? Math.max(...nums) : null;
+  }
+
+  // ดึงวันที่: รองรับแบบไทย (15 ส.ค. 2568), อังกฤษ (15 Aug 2025), และตัวเลข (15/08/2026)
+  function parseSlipDate(text) {
+    const th = {'ม.ค.':1,'ก.พ.':2,'มี.ค.':3,'เม.ย.':4,'พ.ค.':5,'มิ.ย.':6,'ก.ค.':7,'ส.ค.':8,'ก.ย.':9,'ต.ค.':10,'พ.ย.':11,'ธ.ค.':12};
+    const en = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+    const fmt = (y,mo,d) => y + "-" + String(mo).padStart(2,"0") + "-" + String(d).padStart(2,"0");
+
+    let m = text.match(/(\d{1,2})\s*(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s*(\d{2,4})/);
+    if (m) { let y=+m[3]; if(y<100)y+=2500; if(y>2400)y-=543; return fmt(y, th[m[2]], +m[1]); }
+
+    m = text.match(/(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*(\d{2,4})/i);
+    if (m) { let y=+m[3]; if(y<100)y+=2000; if(y>2400)y-=543; return fmt(y, en[m[2].toLowerCase().slice(0,3)], +m[1]); }
+
+    m = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+    if (m) { let y=+m[3]; if(y<100)y+=(y>50?2500:2000); if(y>2400)y-=543; return fmt(y, +m[2], +m[1]); }
+
+    return null;
+  }
+
+  // ดึงชื่อผู้โอน (From) และผู้รับ (To) จากข้อความสลิป
+  function parseSlipParties(text) {
+    const grab = (labels) => {
+      const m = text.match(new RegExp("(?:" + labels + ")\\s*[:：]?\\s*([^\\n]{2,40})", "i"));
+      return m ? m[1].trim().replace(/\s{2,}/g, " ") : null;
+    };
+    return {
+      from: grab("จาก|ผู้โอน|From"),
+      to: grab("ไปยัง|ผู้รับ|ถึง|To")
+    };
+  }
+
+  // เปิดให้เทสต์เรียกใช้ได้
+  window.parseSlipAmount = parseSlipAmount;
+  window.parseSlipDate = parseSlipDate;
+  window.parseSlipParties = parseSlipParties;
+
+  // ข้อความสถานะแต่ละขั้นตอน (ให้ผู้ใช้รู้ว่าไม่ได้ค้าง)
+  const OCR_STATUS = {
+    "loading tesseract core": "กำลังโหลดตัวอ่าน...",
+    "initializing tesseract": "กำลังเริ่มระบบ...",
+    "loading language traineddata": "กำลังโหลดภาษาไทย... (ครั้งแรกครั้งเดียว)",
+    "initializing api": "กำลังเตรียมอ่าน...",
+    "recognizing text": "กำลังอ่านสลิป..."
+  };
+
+  // ย่อรูปให้ด้านยาวสุดไม่เกิน MAX พิกเซล เพื่อให้ OCR เร็วขึ้นมาก
+  function downscaleImage(file, maxSize) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const longest = Math.max(w, h);
+        if (longest > maxSize) { const r = maxSize / longest; w = Math.round(w * r); h = Math.round(h * r); }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(img.src);
+        resolve(canvas);
+      };
+      img.onerror = () => reject(new Error("เปิดรูปไม่สำเร็จ"));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  // อ่านรูปสลิป → กรอกยอด/วันที่ให้อัตโนมัติ
+  function handleSlip(file) {
+    const s = $("slipStatus");
+    s.style.display = "block"; s.className = "";
+    s.textContent = "กำลังเตรียมรูป...";
+
+    downscaleImage(file, 1600)
+      .then((canvas) => Tesseract.recognize(canvas, "tha+eng", {
+        logger: (m) => {
+          const label = OCR_STATUS[m.status] || m.status;
+          const pct = m.progress ? " " + Math.round(m.progress * 100) + "%" : "";
+          s.textContent = label + pct;
+        }
+      }))
+      .then(({ data: { text } }) => {
+        const amt = parseSlipAmount(text);
+        const dt = parseSlipDate(text);
+        const { from, to } = parseSlipParties(text);
+
+        if (amt) $("amount").value = amt;
+        if (dt) $("date").value = dt;
+
+        // รวมผู้โอน/ผู้รับ ใส่ในช่องหมายเหตุ
+        const noteParts = [];
+        if (from) noteParts.push("จาก " + from);
+        if (to) noteParts.push("ถึง " + to);
+        if (noteParts.length) $("note").value = noteParts.join(" → ");
+
+        const filled = [];
+        if (dt) filled.push("วันที่ " + dt);
+        if (amt) filled.push("จำนวน " + amt.toLocaleString("th-TH") + " บาท");
+        if (noteParts.length) filled.push("ผู้โอน/ผู้รับ (ใส่ในหมายเหตุ)");
+
+        if (filled.length) {
+          s.className = "ok-note";
+          s.textContent = "✓ อ่านสลิปแล้ว: " + filled.join(", ") + " — กรุณาตรวจสอบก่อนบันทึก";
+        } else {
+          s.className = "err-note";
+          s.textContent = "อ่านค่าไม่ได้ กรุณากรอกเอง (ลองใช้รูปที่ชัดขึ้น)";
+        }
+      })
+      .catch((err) => { s.className = "err-note"; s.textContent = "อ่านสลิปไม่สำเร็จ: " + err.message; });
+  }
+
+  let previewUrl = null;
+  $("slipInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    // แสดงตัวอย่างรูปทันที
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    const prev = $("slipPreview");
+    prev.src = previewUrl;
+    prev.classList.remove("hidden");
+    // แล้วค่อยอ่านค่า
+    handleSlip(file);
+  });
+
+  // ====== ดึงข้อมูลมาแสดง ======
+  function loadData() {
+    fetch(WEB_APP_URL + "?secret=" + encodeURIComponent(SECRET))
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.success) { showStatus("โหลดข้อมูลไม่สำเร็จ: " + data.message, false); return; }
+
+        // สรุปยอด
+        $("totalIncome").textContent  = Number(data.summary.totalIncome).toLocaleString("th-TH", {minimumFractionDigits:2}) + " ฿";
+        $("totalExpense").textContent = Number(data.summary.totalExpense).toLocaleString("th-TH", {minimumFractionDigits:2}) + " ฿";
+        const bal = Number(data.summary.balance);
+        const balEl = $("balance");
+        balEl.textContent = bal.toLocaleString("th-TH", {minimumFractionDigits:2}) + " ฿";
+        balEl.className = "val " + (bal >= 0 ? "income" : "expense");
+
+        // ตาราง (เรียงล่าสุดอยู่บน)
+        const tbody = $("tbody");
+        tbody.innerHTML = "";
+        if (!data.records.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty">ยังไม่มีรายการ</td></tr>';
+          return;
+        }
+        data.records.slice().reverse().forEach((rec) => {
+          const isIncome = rec["ประเภท"] === "รายรับ";
+          const tr = document.createElement("tr");
+          tr.innerHTML =
+            `<td>${rec["วันที่"] || ""}</td>` +
+            `<td><span class="tag ${isIncome ? "income" : "expense"}">${rec["ประเภท"] || ""}</span></td>` +
+            `<td>${rec["หมวดหมู่"] || ""}</td>` +
+            `<td class="amt">${Number(rec["จำนวนเงิน"]).toLocaleString("th-TH", {minimumFractionDigits:2})}</td>` +
+            `<td>${rec["หมายเหตุ"] || ""}</td>`;
+          tbody.appendChild(tr);
+        });
+      })
+      .catch((err) => {
+        $("tbody").innerHTML = '<tr><td colspan="5" class="empty">เชื่อมต่อไม่สำเร็จ</td></tr>';
+      });
+  }
+
+  // หมายเหตุ: loadData() จะถูกเรียกหลังใส่รหัสผ่านถูกต้องเท่านั้น
+</script>
+</body>
+</html>
